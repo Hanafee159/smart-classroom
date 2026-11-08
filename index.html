@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Classroom Digital Twin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Light = whiteboard + marker colours. Dark = blackboard + chalk colours. */
+:root{
+ --bg:#e6ecf0;--board:#f8fafb;--ink:#1b2a33;--muted:#5d707d;--line:#cdd8df;--tray:#b39a74;
+ --blue:#1f5fd1;--red:#d3401f;--amber:#a97300;
+ --ok:#0b7f57;--warn:#a96100;--bad:#c22b2b;
+ --c-ok:#d9f1e6;--c-warn:#fbecc9;--c-bad:#fadcdc;--c-idle:#e1e8ed;
+ color-scheme:light;
+ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ --bg:#121a18;--board:#1d2b27;--ink:#eef3ee;--muted:#9db1a8;--line:#34473f;--tray:#7a6548;
+ --blue:#8cc4ff;--red:#ff9d82;--amber:#ffe27a;
+ --ok:#8fe3a8;--warn:#ffd37a;--bad:#ff8f86;
+ --c-ok:#1d4a37;--c-warn:#4a3b14;--c-bad:#4f2323;--c-idle:#2a3b35;
+ color-scheme:dark}}
+:root[data-theme="dark"]{
+ --bg:#121a18;--board:#1d2b27;--ink:#eef3ee;--muted:#9db1a8;--line:#34473f;--tray:#7a6548;
+ --blue:#8cc4ff;--red:#ff9d82;--amber:#ffe27a;
+ --ok:#8fe3a8;--warn:#ffd37a;--bad:#ff8f86;
+ --c-ok:#1d4a37;--c-warn:#4a3b14;--c-bad:#4f2323;--c-idle:#2a3b35;
+ color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Prompt','Noto Sans Thai',system-ui,sans-serif;line-height:1.45;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:22px 16px 40px}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+h1{margin:0;font-size:28px;font-weight:600;letter-spacing:-.01em}
+.sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+.meta{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted)}
+.demo{padding:3px 11px;border-radius:99px;background:var(--c-warn);color:var(--warn);font-size:12px;font-weight:500}
+.clock{font-variant-numeric:tabular-nums}
+.live{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:pulse 1.8s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.panel{background:var(--board);border:1px solid var(--line);border-bottom:6px solid var(--tray);border-radius:8px}
+h2{margin:0;font-size:15px;font-weight:600}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:14px 18px 0}
+.ph small{color:var(--muted);font-size:12px}
+/* map */
+.map{display:block;width:100%;max-width:430px;margin:6px auto 0;padding:0 10px}
+.map text{font-family:inherit;font-size:5.5px;fill:var(--ink)}
+.map .dim{fill:var(--muted)}
+.room{fill:none;stroke:var(--ink);stroke-width:1.6}
+.fix{fill:var(--line);stroke:var(--muted);stroke-width:.6}
+.desk{fill:var(--board);stroke:var(--muted);stroke-width:.8;transition:fill .4s}
+.desk.occ{fill:var(--blue);stroke:var(--blue)}
+.zone{fill:var(--blue);fill-opacity:.14;stroke:var(--blue);stroke-width:.8;stroke-dasharray:3 2}
+.mk{stroke:var(--board);stroke-width:1.4}
+.mk.t{fill:var(--red)}.mk.p{fill:var(--blue)}
+.door{fill:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:8px 18px 16px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+/* 3D viewer */
+.main{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px 12px}
+.tools button{font:inherit;font-size:13px;padding:5px 13px;border-radius:99px;border:1px solid var(--line);background:var(--board);color:var(--ink);cursor:pointer}
+.tools button:hover:not(:disabled){border-color:var(--muted)}
+.tools button[aria-pressed="true"]{background:var(--ink);color:var(--board);border-color:var(--ink)}
+.tools button:disabled{opacity:.4;cursor:default}
+.tools button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+#view{position:relative;height:clamp(360px,64vh,660px);border-top:1px solid var(--line);overflow:hidden}
+#cv{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#cv:active{cursor:grabbing}
+#tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.tag{position:absolute;left:0;top:0;font-size:12px;font-weight:500;padding:2px 10px;border-radius:99px;background:var(--board);color:var(--ink);border:1.5px solid var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;will-change:transform}
+.tag.ok{border-color:var(--ok)}.tag.warn{border-color:var(--warn)}.tag.bad{border-color:var(--bad)}.tag.blue{border-color:var(--blue)}
+.loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:14px}
+.hint{margin:0;padding:10px 18px 14px;font-size:12px;color:var(--muted)}
+/* readouts */
+.ch{padding:16px 18px 18px;border-top:1px solid var(--line)}
+.ch:first-of-type{border-top:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lbl{font-size:15px;font-weight:500}
+.chip{font-size:12px;font-weight:500;padding:2px 11px;border-radius:99px}
+.chip.ok{background:var(--c-ok);color:var(--ok)}.chip.warn{background:var(--c-warn);color:var(--warn)}
+.chip.bad{background:var(--c-bad);color:var(--bad)}.chip.idle{background:var(--c-idle);color:var(--muted)}
+.read{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;margin-top:8px}
+.big{display:flex;align-items:baseline;gap:6px;color:var(--c)}
+.big span:first-child{font-size:58px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.unit{font-size:16px;color:var(--muted)}
+.spark{width:100%;height:54px;display:block;overflow:visible}
+.spark .a{fill:var(--c);opacity:.13}
+.spark .l{fill:none;stroke:var(--c);stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.gauge{position:relative;height:8px;border-radius:99px;background:var(--line);margin:14px 0 4px}
+.gauge .band{position:absolute;top:0;bottom:0;border-radius:99px;background:var(--c);opacity:.3}
+.gauge .fill{position:absolute;top:0;bottom:0;left:0;border-radius:99px;background:var(--c);transition:width .5s}
+.gauge i{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--c);transform:translateX(-50%);transition:left .5s}
+.scale{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.stats{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-top:12px}
+.stats b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.stats small{color:var(--muted);font-size:12px}
+.note{margin:10px 0 0;font-size:12px;color:var(--muted)}
+/* lists */
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:16px}
+ul{list-style:none;margin:0;padding:6px 18px 14px}
+li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+li:first-child{border-top:0}
+li b{font-weight:500}li small{display:block;color:var(--muted);font-size:12px}
+li .val{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:500}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.idle{background:var(--muted)}
+.ev{font-size:12px;font-weight:500;padding:1px 9px;border-radius:99px}
+.ev.in{background:var(--c-ok);color:var(--ok)}.ev.out{background:var(--c-idle);color:var(--muted)}
+.empty{color:var(--muted)}
+.foot{margin:14px 2px 0;font-size:12px;color:var(--muted)}
+@media (max-width:820px){.main,.row2{grid-template-columns:minmax(0,1fr)}.big span:first-child{font-size:50px}}
+@media (max-width:420px){.read{grid-template-columns:1fr;gap:6px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <header>
+  <div>
+   <h1>Smart Classroom</h1>
+   <p class="sub">แดชบอร์ด Digital Twin ห้องเรียน 8 × 9 เมตร</p>
+  </div>
+  <div class="meta"><span class="demo">ข้อมูลจำลอง</span><span class="live"></span><span class="clock" id="clock">--:--:--</span></div>
+ </header>
+
+ <div class="main">
+  <section class="panel">
+   <div class="ph"><h2>โมเดล 3 มิติห้องเรียน</h2><small>ข้อมูลเซนเซอร์ผูกกับโมเดลแบบสด</small></div>
+   <div class="tools">
+    <button id="bReset">มุมมองเริ่มต้น</button><button id="bTop">มองจากด้านบน</button>
+    <button id="bCeil" aria-pressed="false">เพดาน</button><button id="bZone" aria-pressed="true">โซนนับคน</button>
+    <button id="bLoad">โหลดไฟล์ .glb</button><input type="file" id="glbIn" accept=".glb" hidden>
+   </div>
+   <div id="view"><canvas id="cv" aria-label="โมเดลสามมิติห้องเรียน"></canvas><div id="tags"></div><div class="loading" id="load">กำลังโหลดโมเดล</div></div>
+   <p class="hint" id="hint">ลากเพื่อหมุน ใช้ล้อเมาส์หรือบีบนิ้วเพื่อซูม ลากด้วยคลิกขวาหรือสองนิ้วเพื่อเลื่อน คนในโมเดลเพิ่มลดตามจำนวนคน และฉากสว่างขึ้นหรือมืดลงตามค่าแสง</p>
+  </section>
+
+  <section class="panel">
+   <div class="ch" style="--c:var(--blue)">
+    <div class="top"><span class="lbl">จำนวนคนในห้อง</span><span class="chip" id="pChip"></span></div>
+    <div class="read">
+     <div class="big"><span id="pNow">0</span><span class="unit">/ <span id="pCap">20</span> คน</span></div>
+     <svg class="spark" viewBox="0 0 200 50" preserveAspectRatio="none"><path class="a" id="pa"/><path class="l" id="pl"/></svg>
+    </div>
+    <div class="gauge"><span class="fill" id="pFill"></span></div>
+    <div class="scale"><span>0</span><span>ที่นั่งทั้งหมด 20</span></div>
+    <div class="stats"><div><b id="pIn">0</b><small>เข้าห้องวันนี้</small></div><div><b id="pOut">0</b><small>ออกจากห้องวันนี้</small></div></div>
+   </div>
+
+   <div class="ch" style="--c:var(--red)">
+    <div class="top"><span class="lbl">อุณหภูมิเฉลี่ย</span><span class="chip" id="tChip"></span></div>
+    <div class="read">
+     <div class="big"><span id="tNow">--</span><span class="unit">°C</span></div>
+     <svg class="spark" viewBox="0 0 200 50" preserveAspectRatio="none"><path class="a" id="ta"/><path class="l" id="tl"/></svg>
+    </div>
+    <div class="gauge"><span class="band" id="tBand"></span><i id="tMark"></i></div>
+    <div class="scale"><span>20°</span><span>ช่วงสบาย 24–28°</span><span>36°</span></div>
+    <div class="stats"><div><b id="t1">--</b><small>TEMP_01 หน้าห้อง</small></div><div><b id="t2">--</b><small>TEMP_02 กลางห้อง</small></div><div><b id="t3">--</b><small>TEMP_03 ท้ายห้อง</small></div></div>
+   </div>
+
+   <div class="ch" style="--c:var(--amber)">
+    <div class="top"><span class="lbl">ความสว่าง (แสง)</span><span class="chip" id="lChip"></span></div>
+    <div class="read">
+     <div class="big"><span id="lNow">--</span><span class="unit">lux</span></div>
+     <svg class="spark" viewBox="0 0 200 50" preserveAspectRatio="none"><path class="a" id="la"/><path class="l" id="ll"/></svg>
+    </div>
+    <div class="gauge"><span class="band" id="lBand"></span><i id="lMark"></i></div>
+    <div class="scale"><span>0</span><span>ช่วงเหมาะสม 300–600 lux</span><span>1,000</span></div>
+   </div>
+  </section>
+ </div>
+
+ <div class="row2">
+  <section class="panel">
+   <div class="ph"><h2>สถานะเซนเซอร์</h2><small>5 ตัว</small></div>
+   <ul id="sensors"></ul>
+  </section>
+  <section class="panel">
+   <div class="ph"><h2>บันทึกการเข้าและออกห้อง</h2><small>ล่าสุด 6 รายการ</small></div>
+   <ul id="log"></ul>
+  </section>
+ </div>
+ <p class="foot">ค่าทั้งหมดในหน้านี้เป็นข้อมูลจำลองเพื่อสาธิตหน้าตา UI ส่งข้อมูลจริงเข้ามาได้ที่ฟังก์ชัน applyReading({ in, out, temps, lux }) แล้วหน้าจะหยุดจำลองและแสดงค่าที่ส่งมาแทน</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+const CFG={cap:20,tMin:24,tMax:28,tLo:20,tHi:36,luxMin:300,luxMax:600,luxHi:1000};
+const S={in:10,out:0,temps:[26.8,27.2,27.0],lux:450,hist:{p:[],t:[],l:[]}};
+const OFF=[0.3,0,0.5],LOG=[];let DEMO=true;
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const avg=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const pct=v=>clamp(v,0,100)+'%';
+
+const COLX=[-2.7,-.9,.9,2.7],ROWY=[1.8,.6,-.6,-1.8,-3];
+const ORDER=[5,12,0,17,9,3,14,7,19,1,10,16,4,13,8,18,2,11,6,15];
+
+const SENS=[['SENS_TEMP_01','อุณหภูมิ ผนังขวาหน้าห้อง'],['SENS_TEMP_02','อุณหภูมิ ผนังซ้าย'],['SENS_TEMP_03','อุณหภูมิ ผนังขวาท้ายห้อง'],['SENS_PEOPLE_01','นับคน เหนือประตู'],['SENS_LIGHT_01','แสง']];
+$('sensors').innerHTML=SENS.map((s,i)=>`<li><span class="dot ok" id="sd${i}"></span><div><b>${s[0]}</b><small>${s[1]}</small></div><span class="val" id="sv${i}"></span></li>`).join('');
+
+const tS=v=>v<CFG.tMin?['เย็น','warn']:v>CFG.tMax?['ร้อน','bad']:['สบาย','ok'];
+const lS=v=>v<CFG.luxMin?['มืดไป','warn']:v>CFG.luxMax?['สว่างมาก','warn']:['เหมาะสม','ok'];
+function chip(id,t,c){const e=$(id);e.textContent=t;e.className='chip '+c}
+
+function spark(id,d,lo,hi){
+ const n=d.length;if(hi-lo<1e-6)hi=lo+1;
+ const pts=d.map((v,i)=>[i/Math.max(n-1,1)*200,46-(v-lo)/(hi-lo)*42]);
+ const L=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');
+ $(id+'l').setAttribute('d',L);$(id+'a').setAttribute('d',L+'L200 50L0 50Z');
+}
+function pushHist(){
+ const H=S.hist;[['p',S.in-S.out],['t',avg(S.temps)],['l',S.lux]].forEach(([k,v])=>{H[k].push(v);if(H[k].length>40)H[k].shift()});
+}
+function addLog(d){
+ LOG.unshift({t:new Date().toLocaleTimeString('th-TH',{hour12:false}),d,n:S.in-S.out});
+ if(LOG.length>6)LOG.pop();
+}
+function step(silent){
+ let cur=S.in-S.out;const r=Math.random();
+ if(r<.34&&cur<CFG.cap){S.in++;if(!silent)addLog('เข้า')}
+ else if(r<.52&&cur>0){S.out++;if(!silent)addLog('ออก')}
+ cur=S.in-S.out;
+ S.temps=S.temps.map((t,i)=>clamp(t+((25.2+cur*.1+OFF[i])-t)*.06+(Math.random()-.5)*.18,22,33));
+ S.lux=clamp(S.lux+(Math.random()-.5)*26,150,900);
+ pushHist();
+}
+function render(){
+ const cur=S.in-S.out,ta=avg(S.temps),lx=Math.round(S.lux);
+ // people
+ $('pCap').textContent=CFG.cap;$('pNow').textContent=cur;$('pIn').textContent=S.in;$('pOut').textContent=S.out;
+ $('pFill').style.width=pct(cur/CFG.cap*100);
+ const ps=cur>=CFG.cap?['เต็ม','warn']:cur===0?['ห้องว่าง','idle']:['ปกติ','ok'];
+ chip('pChip',...ps);
+ 
+ // temperature
+ $('tNow').textContent=ta.toFixed(1);
+ S.temps.forEach((t,i)=>{$('t'+(i+1)).textContent=t.toFixed(1)+'°'});
+ const ts=tS(ta);chip('tChip',...ts);
+ const tr=CFG.tHi-CFG.tLo;
+ $('tBand').style.left=pct((CFG.tMin-CFG.tLo)/tr*100);$('tBand').style.width=pct((CFG.tMax-CFG.tMin)/tr*100);
+ $('tMark').style.left=pct((ta-CFG.tLo)/tr*100);
+ // light
+ $('lNow').textContent=lx.toLocaleString('en-US');
+ const ls=lS(lx);chip('lChip',...ls);
+ $('lBand').style.left=pct(CFG.luxMin/CFG.luxHi*100);$('lBand').style.width=pct((CFG.luxMax-CFG.luxMin)/CFG.luxHi*100);
+ $('lMark').style.left=pct(lx/CFG.luxHi*100);
+ // map label for the door counter
+ if(window.twin)twin.update(cur,S.temps,lx,S.in);
+ // charts
+ const H=S.hist;
+ spark('p',H.p,0,CFG.cap);
+ spark('t',H.t,Math.min(...H.t)-.3,Math.max(...H.t)+.3);
+ spark('l',H.l,Math.min(...H.l)-15,Math.max(...H.l)+15);
+ // sensor list
+ const rows=[];
+ S.temps.forEach(t=>rows.push([t.toFixed(1)+' °C',tS(t)[1]]));
+ rows.push([cur+' คน',ps[1]==='idle'?'idle':'ok']);
+ rows.push([lx.toLocaleString('en-US')+' lux',ls[1]]);
+ rows.forEach((r,i)=>{$('sv'+i).textContent=r[0];$('sd'+i).className='dot '+r[1]});
+ // log
+ $('log').innerHTML=LOG.length?LOG.map(e=>`<li><span class="ev ${e.d==='เข้า'?'in':'out'}">${e.d}</span><div>${e.d==='เข้า'?'มีคนเข้าห้อง':'มีคนออกจากห้อง'}<small>${e.t}</small></div><span class="val">${e.n} คน</span></li>`).join(''):'<li class="empty">รอเหตุการณ์ใหม่จากเซนเซอร์นับคน</li>';
+}
+// hook for real data: applyReading({in:25,out:9,temps:[26.4,27.1,26.9],lux:480})
+window.applyReading=r=>{
+ DEMO=false;
+ if(r.in!=null)S.in=r.in;if(r.out!=null)S.out=r.out;
+ if(Array.isArray(r.temps)&&r.temps.length===3)S.temps=r.temps;
+ if(r.lux!=null)S.lux=r.lux;
+ pushHist();render();
+};
+for(let i=0;i<40;i++)step(true);
+render();
+setInterval(()=>{if(DEMO){step(false);render()}},2000);
+setInterval(()=>{$('clock').textContent=new Date().toLocaleTimeString('th-TH',{hour12:false})},1000);
+$('clock').textContent=new Date().toLocaleTimeString('th-TH',{hour12:false});
+</script>
+<script>
+(function(){
+ const fail=m=>{const l=$('load');if(l)l.textContent=m};
+ if(!window.THREE||!THREE.OrbitControls||!THREE.GLTFLoader)return fail('โหลดไลบรารี 3D ไม่สำเร็จ ลองรีเฟรชหน้า');
+ const box=$('view'),cv=$('cv');let R;
+ try{R=new THREE.WebGLRenderer({canvas:cv,antialias:true})}catch(e){return fail('อุปกรณ์นี้ไม่รองรับ WebGL')}
+ R.setPixelRatio(Math.min(devicePixelRatio,2));
+ const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1,.1,100),ctl=new THREE.OrbitControls(cam,cv);
+ const HOME=[10.5,8.5,11.5];cam.position.set(...HOME);ctl.target.set(0,1,0);
+ Object.assign(ctl,{enableDamping:true,minDistance:2,maxDistance:30,maxPolarAngle:Math.PI*.495});ctl.update();
+ const hemi=new THREE.HemisphereLight(0xffffff,0x8896a0,.8),sun=new THREE.DirectionalLight(0xffffff,.7);
+ sun.position.set(6,10,6);sc.add(hemi,sun);
+ const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+ const pm=new THREE.MeshStandardMaterial({roughness:.7});
+ const theme=()=>{sc.background=new THREE.Color(css('--bg'));pm.color.set(css('--blue'))};
+ theme();matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
+
+ // ---- materials + helpers (coordinates are Blender metres, converted to Y-up) ----
+ const std=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.6},o));
+ const MT={wall:std(0xf4f4ef),acc:std(0xdbf0eb),floor:std(0xd9d9d3),ceil:std(0xf8f8f8),wood:std(0xc49a6c),
+  metal:std(0x5a5e66,{roughness:.4,metalness:.6}),chair:std(0x3f78c4),fw:std(0xeeeeee),
+  glass:std(0x99c7f2,{transparent:true,opacity:.25,depthWrite:false,roughness:.05}),
+  board:std(0xfafafa,{roughness:.25}),bf:std(0x9a9ea6,{metalness:.5,roughness:.4}),screen:std(0xf2f2ec),
+  black:std(0x1a1a1a),door:std(0x8c5a33),cab:std(0xb8bcc0),abs:std(0xf2f2f2,{roughness:.35}),ac:std(0xeef0f2),
+  lens:std(0x08080a,{roughness:.1}),disp:std(0x0a1a14,{emissive:0x33ff80,roughness:.2}),
+  led:new THREE.MeshBasicMaterial({color:0x2dff66}),lamp:new THREE.MeshBasicMaterial({color:0xfff6e0}),
+  zone:std(0x19e066,{transparent:true,opacity:.16,depthWrite:false})};
+ MT.glass.name='Glass';MT.zone.name='Detection_Zone';
+ const bx=(p,c,s,m)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(s[0],s[2],s[1]),m);o.position.set(c[0],c[2],-c[1]);p.add(o);return o};
+ const cy=(p,c,rb,rt,h,m,n)=>{const o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,n||20),m);o.position.set(c[0],c[2],-c[1]);p.add(o);return o};
+
+ function build(){
+  const G=new THREE.Group();G.name='Classroom';
+  const grp=(n,b,rz)=>{const g=new THREE.Group();g.name=n;g.position.set(b[0],b[2],-b[1]);g.rotation.y=rz||0;G.add(g);return g};
+  const wall=(ax,fx,L,ops,m)=>{
+   const seg=(u0,u1,z0,z1)=>{if(u1-u0<1e-6||z1-z0<1e-6)return;const u=(u0+u1)/2,z=(z0+z1)/2,du=u1-u0,dz=z1-z0;
+    ax=='X'?bx(G,[u,fx,z],[du,.2,dz],m):bx(G,[fx,u,z],[.2,du,dz],m)};
+   let cur=-L/2;ops.forEach(([u,w,s,h])=>{seg(cur,u-w/2,0,3);seg(u-w/2,u+w/2,0,s);seg(u-w/2,u+w/2,s+h,3);cur=u+w/2});seg(cur,L/2,0,3)};
+  wall('X',4.6,8.4,[],MT.acc);wall('X',-4.6,8.4,[[3,1.1,0,2.1]],MT.wall);
+  wall('Y',-4.1,9,[-3,-1,1,3].map(y=>[y,1.6,.9,1.4]),MT.wall);wall('Y',4.1,9,[],MT.wall);
+  bx(G,[0,0,-.05],[8.4,9.4,.1],MT.floor);
+  const ce=grp('STR_Ceiling',[0,0,0]);bx(ce,[0,0,3.05],[8.4,9.4,.1],MT.ceil);
+  [-3,-1,1,3].forEach((y,i)=>{const g=grp('STR_Window_0'+(i+1),[-4.1,y,1.6],Math.PI/2);
+   bx(g,[0,0,.7],[1.7,.08,.05],MT.fw);bx(g,[0,0,-.7],[1.7,.08,.05],MT.fw);
+   bx(g,[-.825,0,0],[.05,.08,1.45],MT.fw);bx(g,[.825,0,0],[.05,.08,1.45],MT.fw);
+   bx(g,[0,0,0],[.03,.06,1.4],MT.fw);bx(g,[0,0,.2],[1.6,.06,.03],MT.fw);
+   bx(g,[0,0,0],[1.6,.01,1.4],MT.glass);bx(g,[0,-.09,-.74],[1.8,.28,.04],MT.fw)});
+  const d=grp('STR_Door',[3,-4.6,0]);
+  bx(d,[-.575,0,1.05],[.05,.22,2.1],MT.fw);bx(d,[.575,0,1.05],[.05,.22,2.1],MT.fw);bx(d,[0,0,2.125],[1.2,.22,.05],MT.fw);
+  bx(d,[0,0,1.035],[1,.04,2.05],MT.door);bx(d,[0,0,1.5],[.3,.05,.8],MT.glass);
+  [.045,-.045].forEach(y=>bx(d,[.38,y,1],[.12,.03,.025],MT.metal));
+  // desks + chairs (5 rows x 4 columns, same layout as the Blender model)
+  const desk=new THREE.Group();bx(desk,[0,0,.725],[.6,.45,.03],MT.wood);bx(desk,[0,0,.45],[.5,.35,.01],MT.wood);
+  [-1,1].forEach(a=>[-1,1].forEach(b=>bx(desk,[a*.27,b*.19,.355],[.03,.03,.71],MT.metal)));
+  const chair=new THREE.Group();bx(chair,[0,0,.43],[.42,.42,.04],MT.chair);bx(chair,[0,-.195,.64],[.4,.03,.3],MT.chair);
+  [-1,1].forEach(a=>{bx(chair,[a*.17,-.195,.625],[.03,.03,.35],MT.metal);[-1,1].forEach(b=>bx(chair,[a*.17,b*.17,.205],[.025,.025,.41],MT.metal))});
+  const put=(o,n,b,rz)=>{const c=o.clone();c.name=n;c.position.set(b[0],0,-b[1]);c.rotation.y=rz||0;G.add(c)};
+  ROWY.forEach((y,r)=>COLX.forEach((x,c)=>{put(desk,`FUR_Desk_R${r+1}C${c+1}`,[x,y]);put(chair,`FUR_Chair_R${r+1}C${c+1}`,[x,y-.45])}));
+  const td=grp('FUR_TeacherDesk',[-2.2,3.4,0],Math.PI);bx(td,[0,0,.74],[1.5,.7,.04],MT.wood);
+  [-1,1].forEach(a=>bx(td,[a*.73,0,.36],[.04,.66,.72],MT.cab));bx(td,[0,.3,.5],[1.42,.03,.5],MT.cab);
+  put(chair,'FUR_TeacherChair',[-2.2,3.95],Math.PI);
+  const cb=grp('FUR_Cabinet',[-3.1,-4.2,0]);bx(cb,[0,0,.9],[1.6,.6,1.8],MT.cab);[-.4,.4].forEach(a=>bx(cb,[a,-.31,.9],[.76,.02,1.7],MT.wood));
+  // equipment
+  const wb=grp('EQP_Whiteboard',[-1.2,4.48,1.55]);bx(wb,[0,0,0],[3.3,.04,1.3],MT.bf);bx(wb,[0,-.021,0],[3.2,.02,1.2],MT.board);bx(wb,[0,-.05,-.67],[3,.08,.03],MT.bf);
+  const ps=grp('EQP_ProjectorScreen',[2.3,4.49,1.7]);bx(ps,[0,0,0],[2.3,.02,1.5],MT.black);bx(ps,[0,-.012,0],[2.2,.01,1.4],MT.screen);bx(ps,[0,-.04,.8],[2.3,.12,.1],MT.metal);
+  const pj=grp('EQP_Projector',[2.3,-.3,3]);cy(pj,[0,0,-.1],.015,.015,.2,MT.metal,12);bx(pj,[0,0,-.25],[.36,.28,.1],MT.abs);
+  cy(pj,[0,.15,-.25],.035,.035,.03,MT.lens,16).rotation.x=Math.PI/2;
+  [-2,2].forEach(x=>[2.6,.3,-2].forEach(y=>bx(G,[x,y,2.985],[.6,1.2,.03],MT.lamp)));
+  [1.2,-1.2].forEach((y,i)=>{const a=grp('EQP_AC_0'+(i+1),[4,y,2.4],-Math.PI/2);
+   bx(a,[0,-.125,0],[1,.25,.3],MT.ac);bx(a,[0,-.251,-.1],[.9,.01,.04],MT.black);bx(a,[.38,-.252,.06],[.06,.005,.02],MT.led)});
+  // sensors
+  [['SENS_TEMP_01',[4,2.6,1.5],-1],['SENS_TEMP_02',[-4,0,1.5],1],['SENS_TEMP_03',[4,-2.6,1.5],-1]].forEach(([n,p,s])=>{
+   const g=grp(n,p,s*Math.PI/2);bx(g,[0,-.0125,0],[.09,.025,.12],MT.abs);bx(g,[0,-.0258,.02],[.058,.003,.036],MT.disp);
+   for(let i=0;i<4;i++)bx(g,[0,-.0258,-.025-i*.009],[.05,.003,.003],MT.black);
+   bx(g,[.03,-.0258,.052],[.008,.003,.008],MT.led);
+   const h=new THREE.Mesh(new THREE.SphereGeometry(.13,16,12),new THREE.MeshBasicMaterial({color:0xff6a3d,transparent:true,opacity:.3,depthWrite:false}));
+   h.position.set(0,0,.03);g.add(h)});
+  const pc=grp('SENS_PEOPLE_01',[3,-3.8,3]);cy(pc,[0,0,-.006],.08,.08,.012,MT.abs);cy(pc,[0,0,-.027],.065,.065,.03,MT.abs);
+  cy(pc,[0,0,-.047],.03,.03,.01,MT.lens);bx(pc,[.05,0,-.0435],[.01,.01,.003],MT.led);
+  const zn=grp('SENS_PEOPLE_01_ZONE',[3,-3.8,0]);cy(zn,[0,0,1.475],.7,.0001,2.95,MT.zone,32);
+  return G;
+ }
+
+ // ---- people figures: one per seat, shown according to the people count ----
+ const ppl=[];
+ ROWY.forEach(y=>COLX.forEach(x=>{const g=new THREE.Group();g.position.set(x,0,.41-y);
+  const t=new THREE.Mesh(new THREE.CylinderGeometry(.15,.17,.5,14),pm);t.position.y=.72;
+  const h=new THREE.Mesh(new THREE.SphereGeometry(.11,16,12),pm);h.position.y=1.08;
+  g.add(t,h);g.visible=false;sc.add(g);ppl.push(g)}));
+
+ // ---- sensor tags (HTML labels pinned to the 3D sensor nodes) ----
+ const TAGS=['SENS_TEMP_01','SENS_TEMP_02','SENS_TEMP_03','SENS_PEOPLE_01'];
+ const tg=TAGS.map(n=>{const e=document.createElement('div');e.className='tag';e.title=n;$('tags').appendChild(e);return e});
+ let model,ceil,zone,nodes=[];
+ const bCeil=$('bCeil'),bZone=$('bZone');
+ function use(root){
+  if(model)sc.remove(model);model=root;sc.add(root);
+  root.traverse(o=>{if(o.isMesh)[].concat(o.material).forEach(m=>{
+   if(/glass/i.test(m.name)){m.transparent=true;m.opacity=.25;m.depthWrite=false}
+   else if(/detection/i.test(m.name)){m.transparent=true;m.opacity=.16;m.depthWrite=false}})});
+  ceil=root.getObjectByName('STR_Ceiling');zone=root.getObjectByName('SENS_PEOPLE_01_ZONE');
+  if(ceil)ceil.visible=false;
+  nodes=TAGS.map(n=>root.getObjectByName(n));
+  bCeil.disabled=!ceil;bZone.disabled=!zone;
+  bCeil.setAttribute('aria-pressed','false');bZone.setAttribute('aria-pressed','true');
+  render();
+ }
+ window.twin={update(cur,temps,lx,inn){
+  const occ=new Set(ORDER.slice(0,Math.min(cur,20)));ppl.forEach((g,i)=>g.visible=occ.has(i));
+  const k=clamp(lx,0,1000)/1000;hemi.intensity=.3+k*.9;sun.intensity=.2+k*.8;
+  temps.forEach((t,i)=>{tg[i].textContent=t.toFixed(1)+'°C';tg[i].className='tag '+tS(t)[1]});
+  tg[3].textContent=cur+' คน (เข้า '+inn+')';tg[3].className='tag blue';
+ }};
+
+ // ---- controls ----
+ $('bReset').onclick=()=>{cam.position.set(...HOME);ctl.target.set(0,1,0)};
+ $('bTop').onclick=()=>{cam.position.set(0,22,.01);ctl.target.set(0,0,0)};
+ bCeil.onclick=()=>{if(ceil){ceil.visible=!ceil.visible;bCeil.setAttribute('aria-pressed',ceil.visible)}};
+ bZone.onclick=()=>{if(zone){zone.visible=!zone.visible;bZone.setAttribute('aria-pressed',zone.visible)}};
+ const GL=new THREE.GLTFLoader();
+ $('bLoad').onclick=()=>$('glbIn').click();
+ $('glbIn').onchange=e=>{const f=e.target.files[0];if(!f)return;
+  f.arrayBuffer().then(ab=>GL.parse(ab,'',g=>{use(g.scene);$('hint').textContent='โหลดไฟล์ '+f.name+' แล้ว เซนเซอร์ผูกกับโมเดลตามชื่อ object เช่น SENS_TEMP_01'},
+   ()=>{$('hint').textContent='อ่านไฟล์ไม่ได้ ลองส่งออกจาก Blender เป็น .glb อีกครั้ง'}))};
+
+ new ResizeObserver(()=>{const w=box.clientWidth,h=box.clientHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}).observe(box);
+ const v3=new THREE.Vector3();
+ (function loop(){requestAnimationFrame(loop);ctl.update();cam.updateMatrixWorld();
+  const w=box.clientWidth,h=box.clientHeight;
+  nodes.forEach((n,i)=>{const e=tg[i];if(!n){e.style.display='none';return}
+   n.getWorldPosition(v3);v3.project(cam);e.style.display=v3.z<1?'':'none';
+   e.style.transform=`translate(${(v3.x*.5+.5)*w}px,${(-v3.y*.5+.5)*h}px) translate(-50%,-140%)`});
+  R.render(sc,cam)})();
+ use(build());$('load').remove();
+})();
+
+</script>
+</body>
+</html>
